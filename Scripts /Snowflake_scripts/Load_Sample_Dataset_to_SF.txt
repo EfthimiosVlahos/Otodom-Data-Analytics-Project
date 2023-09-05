@@ -8,10 +8,6 @@
 STEP - 1 --- Download the sample dataset
 --------
 
-Download the 3 csv file from my blog which should be named as follows:
-  --> Sample_ORG_Dataset_Part1.zip
-  --> Sample_ORG_Dataset_Part2.zip
-  --> Sample_ORG_Dataset_Part3.zip
 
 
 Unzip the file and place them in your computer.
