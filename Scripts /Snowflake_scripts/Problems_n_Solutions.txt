@@ -1,0 +1,193 @@
+-- 1) What is the average rental price of 1 room, 2 room, 3 room and 4 room apartments in some of the major cities in Poland?
+
+SELECT city, round(avg_rent_1R,2) AS avg_rent_1R
+	, round(avg_rent_2R,2) AS avg_rent_2R, round(avg_rent_3R,2) AS avg_rent_3R
+	, round(avg_rent_4R,2) AS avg_rent_4R
+	FROM (
+	    SELECT city,no_of_rooms,price_new
+	    FROM OTODOM_DATA_TRANSFORMED
+	    WHERE city IN ('Warszawa', 'Wrocław', 'Kraków', 'Gdańsk', 'Katowice', 'Łódź')
+	    AND apartment_flag = 'apartment'
+	    AND is_for_sale='false' 
+	    AND no_of_rooms IN (1,2,3,4)) x
+	pivot 
+	    (
+	        AVG(price_new)
+	        FOR no_of_rooms IN ('1','2','3','4')
+	    ) 
+	    AS p(city,avg_rent_1R, avg_rent_2R, avg_rent_3R, avg_rent_4R)
+	ORDER BY avg_rent_4R DESC 
+
+--2) I want to buy an apartment which is around 90-100 m2 and within a range of 800,000 to 1M, display the suburbs in warsaw where I can find such apartments.
+	
+	SELECT suburb, count(1), max(price_new) max_price, min(price_new) min_price
+	FROM otodom_data_transformed
+	WHERE city IN ('Warszawa')
+	AND apartment_flag = 'apartment'
+	AND is_for_sale = 'true'
+	AND surface_new BETWEEN 90 AND 100
+	AND price_new BETWEEN 800000 AND 1000000
+	GROUP BY suburb
+	ORDER BY count(1)  DESC;
+
+-- 3) What size of an apartment can I expect with a monthly rent of 3000 to 4000 PLN in different major cities of Poland?
+
+	SELECT city, avg(surface_new) avg_area
+	FROM otodom_data_transformed
+	WHERE city IN ('Warszawa', 'Wrocław', 'Kraków', 'Gdańsk', 'Katowice', 'Łódź')
+	AND apartment_flag = 'apartment'
+	AND is_for_sale = 'false'
+	AND price_new between 3000 AND 4000
+	GROUP BY city
+	ORDER BY avg_area;	
+
+
+
+
+--4) What are the most expensive apartments in major cities of Poland? Display the ad title in english along with city, suburb, cost, size.
+
+	WITH cte AS
+	(SELECT city, max(price_new) max_price, min(price_new) min_price
+	FROM otodom_data_transformed
+	WHERE city IN ('Warszawa', 'Wrocław', 'Kraków', 'Gdańsk', 'Katowice', 'Łódź')
+	AND apartment_flag = 'apartment'
+	AND is_for_sale = 'true'
+	group by city)
+	SELECT x.rn, x.title_eng, x.city, x.suburb, x.price_new, x.surface_new, x.url
+	FROM otodom_data_transformed x
+	JOIN cte on cte.city=x.city AND cte.max_price=x.price_new
+	WHERE apartment_flag = 'apartment'
+	AND is_for_sale = 'true'
+	ORDER BY x.city,x.price_new;	
+
+
+
+
+--5) What is the percentage of private & business ads on otodom?
+
+	WITH all_ads AS
+	(SELECT count(1) tot_ads FROM otodom_data_transformed),
+	ads_type AS
+	(SELECT advertiser_type
+	, sum(CASE WHEN advertiser_type='business' THEN 1 END) AS business_ads
+	, sum(CASE WHEN advertiser_type='private' THEN 1 END) AS private_ads
+	FROM otodom_data_transformed
+	GROUP BY advertiser_type)
+	SELECT concat(round((max(business_ads) * 100)/max(tot_ads),2),'%') AS business_ads_perc
+	, concat(round((max(private_ads) * 100)/max(tot_ads),2),'%') AS private_ads_perc
+	FROM ads_type ty
+	CROSS JOIN all_ads al ;
+
+
+
+
+-- 6) What is the avg sale price for 3 room apartments within 50-70 m2 area in major cities of Poland?
+
+	SELECT city, round(avg(price_new),2) AS avg_sale_price
+	FROM otodom_data_transformed
+	WHERE city IN ('Warszawa', 'Wrocław', 'Kraków', 'Gdańsk', 'Katowice', 'Łódź')
+	AND apartment_flag = 'apartment'
+	AND is_for_sale = 'true'
+    AND no_of_rooms = 3
+	AND surface_new between 50 AND 70
+	GROUP BY city
+	ORDER BY avg_sale_price DESC;
+
+
+
+
+-- 7) What is the average rental price for apartments in warsaw in different suburbs?
+
+	WITH cte1 AS
+	(SELECT a.*
+	, CASE WHEN surface_new BETWEEN 0 AND 50 THEN '0-50'
+	WHEN surface_new bBETWEEN 50 AND 100 then '50-100'
+	WHEN surface_new > 100 THEN '>100'
+	END AS area_category
+	FROM otodom_data_transformed a
+	WHERE city = 'Warszawa'
+	AND apartment_flag = 'apartment'
+	AND is_for_sale = 'false'
+	AND suburb is not null ),
+	cte2 AS
+	(SELECT suburb
+	, CASE WHEN area_category = '0-50' THEN avg(price_new) END AS avg_price_upto50
+	, CASE WHEN area_category = '50-100' THEN avg(price_new) END AS avg_price_upto100
+	, CASE WHEN area_category = '>100' THEN avg(price_new) END AS avg_price_over100
+	FROM cte1
+	GROUP BY suburb,area_category)
+	SELECT suburb
+	, round(max(avg_price_upto50),2) AS avg_price_upto_50
+	, round(max(avg_price_upto100),2) AS avg_price_upto_100
+	, round(max(avg_price_over100),2) AS avg_price_over_100
+	FROM cte2
+	GROUP BY suburb
+	ORDER BY suburb;
+
+
+
+
+-- 8) Which are the top 3 most luxurious neighborhoods in Warsaw? Luxurious neighborhoods can be defined as suburbs which has the most no of of apartments costing over 2M in cost.
+
+	SELECT suburb, luxurious_apartments
+	FROM (
+	SELECT suburb, count(1) luxurious_apartments
+	, rank() over(ORDER BY luxurious_apartments DESC ) AS rn
+	FROM otodom_data_transformed
+	WHERE city = 'Warszawa'
+	AND apartment_flag = 'apartment'
+	AND is_for_sale = 'true'
+	AND price_new > 2000000
+	AND suburb is not null
+	GROUP BY suburb) x
+	WHERE x.rn <= 3;	
+
+
+
+
+-- 9) Most small families would be looking for apartment with 40-60 m2 in size. Identify the top 5 most affordable neighborhoods in warsaw.
+
+	SELECT suburb, avg_price, no_of_apartments
+	FROM (
+	SELECT suburb, round(avg(price_new),2) avg_price, count(1) AS no_of_apartments
+	, rank() over(order by avg_price ) AS rn
+	FROM otodom_data_transformed
+	WHERE city = 'Warszawa'
+	AND apartment_flag = 'apartment'
+	AND is_for_sale = 'false'
+	AND surface_new between 40 AND 60
+	AND suburb is not null
+	GROUP BY suburb) x
+	WHERE x.rn <= 5;
+
+
+
+
+-- 10) Which suburb in warsaw has the most and least no of private ads?
+
+	SELECT distinct
+	first_value(suburb||' - '||count(1)) over(order by count(1)) AS least_private_ads
+	, last_value(suburb||' - '||count(1)) over(order by count(1)) AS most_private_ads
+	FROM otodom_data_transformed
+	WHERE city = 'Warszawa'
+	AND advertiser_type = 'private'
+	AND suburb is not null
+	GROUP BY suburb;
+
+
+	
+
+-- 11) What is the average rental price and sale price in some of the major cities in Poland?
+	
+	WITH cte as
+	(SELECT city
+	, (CASE WHEN is_for_sale='false' THEN round(avg(price_new),2) end) AS avg_rental
+	, (CASE WHEN is_for_sale='true'  THEN round(avg(price_new),2) end) AS avg_sale
+	FROM otodom_data_transformed
+	WHERE city in ('Warszawa', 'Wrocław', 'Kraków', 'Gdańsk', 'Katowice', 'Łódź')
+	AND apartment_flag = 'apartment'
+	GROUP BY city, is_for_sale)
+	SELECT city, max(avg_rental) AS avg_rental, max(avg_sale) AS avg_sale
+	FROM cte
+	GROUP BY city
+	ORDER BY avg_rental DESC ;
