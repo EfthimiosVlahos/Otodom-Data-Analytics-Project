@@ -13,8 +13,6 @@ The project aims to provide a comprehensive analysis of the housing market in Po
 3. [Data Collection and Storage](#data-collection-and-storage)
 4. [Data Analysis](#data-analysis)
 5. [Getting Started](#getting-started)
-6. [Contributions](#contributions)
-7. [License](#license)
 
 ---
 
